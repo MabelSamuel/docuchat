@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+
+# Environment (keep .env.example committed)
+.env
+.env.*
+!.env.example
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Test coverage
+coverage/
+
+# Local databases
+*.db
+*.db-journal
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
