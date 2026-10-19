@@ -10,12 +10,16 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "dev": "tsx watch src/server.ts"
+    "dev": "tsx watch src/server.ts",
+    "dev:worker": "tsx watch src/worker.ts"
   },
   "dependencies": {
+    "@bull-board/api": "^9.10.4",
+    "@bull-board/express": "^9.10.4",
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
     "@types/bcryptjs": "^2.4.6",
+    "axios": "^1.20.0",
     "bcryptjs": "^3.0.3",
     "bullmq": "^6.3.12",
     "cors": "^2.8.6",
@@ -24,6 +28,7 @@
     "helmet": "^8.3.0",
     "ioredis": "^6.0.0",
     "jsonwebtoken": "^9.0.3",
+    "opossum": "^10.0.0",
     "pg": "^8.23.1",
     "pino": "^10.4.0",
     "swagger-jsdoc": "^6.3.0",
@@ -35,6 +40,7 @@
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
+    "@types/opossum": "^8.1.9",
     "@types/supertest": "^7.2.1",
     "@types/swagger-jsdoc": "^6.0.4",
     "@types/swagger-ui-express": "^4.1.8",

@@ -1,28 +1,31 @@
-import { Worker, Job } from 'bullmq';
-import { redisConnection } from './connection';
-import { prisma } from '../lib/prisma';
-import { appEvents } from '../lib/events';
+import { Worker, Job } from "bullmq";
+import { redisConnection } from "./connection";
+import { prisma } from "../lib/prisma";
+import { appEvents } from "../lib/events";
+import { estimateTokens, splitIntoChunks } from "../lib/chunker";
+import { deadLetterQueue } from "./dead-letter.queue";
 
 const worker = new Worker(
-  'document-processing',
+  "document-processing",
   async (job: Job) => {
     const { documentId, userId } = job.data;
-    console.log(`Processing document ${documentId} (attempt ${job.attemptsMade + 1})`);
+    console.log(
+      `Processing document ${documentId} (attempt ${job.attemptsMade + 1})`,
+    );
 
     // Step 1: Fetch the document content
-     const doc = await prisma.document.findUniqueOrThrow({
-        where: { id: documentId },
-      });
+    const doc = await prisma.document.findUniqueOrThrow({
+      where: { id: documentId },
+    });
 
     // Mark as processing
     await prisma.document.update({
       where: { id: documentId },
-      data: { status: 'processing' },
+      data: { status: "processing" },
     });
 
     try {
-      
-       await job.updateProgress(10);
+      await job.updateProgress(10);
 
       // Step 2: Split into chunks
       const chunks = splitIntoChunks(doc.content, 500);
@@ -30,7 +33,6 @@ const worker = new Worker(
 
       // Step 3: Store chunks in the database
       await prisma.$transaction(async (tx) => {
-
         // Delete any existing chunks (in case of retry)
         await tx.chunk.deleteMany({ where: { documentId } });
 
@@ -45,32 +47,29 @@ const worker = new Worker(
 
         await tx.document.update({
           where: { id: documentId },
-          data: { status: 'ready', chunkCount: chunks.length },
+          data: { status: "ready", chunkCount: chunks.length },
         });
       });
       await job.updateProgress(100);
 
       // Emit event for audit/notification
-      appEvents.emit('doc:processed', {
+      appEvents.emit("doc:processed", {
         documentId,
         userId,
         chunkCount: chunks.length,
       });
 
       return { success: true, chunks: chunks.length };
-
     } catch (error) {
       // Only mark as failed on the LAST attempt
       if (job.attemptsMade >= (job.opts.attempts ?? 3) - 1) {
-
         await prisma.document.update({
           where: { id: documentId },
           data: {
-            status: 'failed',
+            status: "failed",
             error: (error as Error).message,
           },
         });
-
       }
       throw error; // Re-throw so BullMQ retries
     }
@@ -78,21 +77,34 @@ const worker = new Worker(
   {
     connection: redisConnection,
     concurrency: 3,
-  }
+  },
 );
 
 // Event listeners for logging
-worker.on('completed', (job) => {
+worker.on("completed", (job) => {
   console.log(`Job ${job.id} completed: ${job.returnvalue?.chunks} chunks`);
 });
 
-worker.on('failed', (job, error) => {
-  console.error(`Job ${job?.id} failed (attempt ${job?.attemptsMade}):`,
-    error.message);
+worker.on("failed", async (job, error) => {
+  if (!job) return;
+
+  // Check if all attempts exhausted
+  if (job.attemptsMade >= (job.opts.attempts ?? 3)) {
+    console.error(`Job ${job.id} permanently failed. Moving to DLQ.`);
+
+    await deadLetterQueue.add("failed-document", {
+      originalJobId: job.id,
+      originalQueue: "document-processing",
+      data: job.data,
+      error: error.message,
+      failedAt: new Date().toISOString(),
+      attempts: job.attemptsMade,
+    });
+  }
 });
 
-worker.on('error', (error) => {
-  console.error('Worker error:', error);
+worker.on("error", (error) => {
+  console.error("Worker error:", error);
 });
 
 export { worker };

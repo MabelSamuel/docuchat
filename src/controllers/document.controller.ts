@@ -31,8 +31,8 @@ export async function listDocuments(req: Request, res: Response) {
 }
 
 export async function createDocument(req: Request, res: Response) {
-  const doc = await documentService.createDocument(req.user!.id, req.body);
-  res.status(201).json({ success: true, data: doc });
+  const doc = await documentService.createDocument({ ...req.body, userId: req.user!.id });
+  res.status(202).json({ success: true, data: doc });
 }
 
 export async function deleteDocument(req: Request, res: Response) {

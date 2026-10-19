@@ -16,6 +16,7 @@ import adminRoutes from './routes/admin.routes';
 import './events/auth.events';
 import './events/admin.events';
 import './events/document.events';
+import { bullBoardAdapter } from './config/bull-board';
 
 
 const app = express();
@@ -60,6 +61,7 @@ app.use('/api/v1/documents', documentRoutes);
 app.use('/api/v1/chat', chatRoutes);
 
 app.use('/api/v1/admin', adminRoutes);
+app.use('/admin/queues', bullBoardAdapter.getRouter());
 
 
 // === ERROR HANDLER (must be last middleware) ===

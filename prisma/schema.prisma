@@ -93,6 +93,7 @@ model Document {
   filename    String?
   content     String
   status      String    @default("pending")
+  error       String?
   chunkCount  Int       @default(0)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -101,10 +102,25 @@ model Document {
 
   user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   messages Message[]
+  chunks   Chunk[]
 
   @@index([userId])        // Fast: WHERE userId = ?
   @@index([status])        // Fast: WHERE status = 'READY'
   @@index([userId, status]) // Fast: WHERE userId = ? AND status = ?
+}
+
+model Chunk {
+  id         String   @id @default(cuid())
+  documentId String
+  index      Int
+  content    String
+  tokenCount Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, index])
+  @@index([documentId])
 }
 
 model Role {

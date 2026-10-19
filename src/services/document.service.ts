@@ -2,6 +2,7 @@ import { DOC_EVENTS } from "../events/document.events";
 import { NotFoundError } from "../lib/errors";
 import { appEvents } from "../lib/events";
 import { prisma } from "../lib/prisma";
+import { queueDocumentForProcessing } from "../queues/document.queue";
 
 interface ListDocumentsOptions {
   page: number;
@@ -67,21 +68,30 @@ export async function listDocuments(
   };
 }
 
-export async function createDocument(
-  userId: string,
-  data: { title: string; content: string },
-) {
+export async function createDocument(data: {
+  title: string;
+  content: string;
+  userId: string;
+}) {
   const doc = await prisma.document.create({
-    data: { userId, title: data.title, content: data.content },
+    data: {
+      userId: data.userId,
+      title: data.title,
+      filename: data.title.toLowerCase().replace(/\s+/g, "-"),
+      content: data.content,
+      status: "pending",
+    },
   });
 
+  const jobId = await queueDocumentForProcessing(doc.id, data.userId);
+
   appEvents.emit(DOC_EVENTS.CREATED, {
-    userId,
+    userId: data.userId,
     documentId: doc.id,
     title: doc.title,
     fileSizeBytes: Buffer.byteLength(data.content),
   });
-  return doc;
+  return { document: doc, jobId };
 }
 
 export async function deleteDocument(documentId: string, userId: string) {
@@ -110,5 +120,4 @@ export async function deleteDocument(documentId: string, userId: string) {
       deletedBy: userId,
     },
   });
-
 }
