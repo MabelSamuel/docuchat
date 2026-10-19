@@ -15,6 +15,7 @@ import {
 } from '../controllers/document.controller';
 import { prisma } from '../lib/prisma';
 import { documentQueue } from '../queues/document.queue';
+import { conditionalGet } from '../middleware/etag';
 
 
 const router = Router();
@@ -34,6 +35,7 @@ router.post('/',
 
 router.get('/:id',
   validate(documentParamsSchema),
+  conditionalGet(),
   getDocument
 );
 

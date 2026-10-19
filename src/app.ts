@@ -6,6 +6,8 @@ import { logger } from './lib/logger';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './config/swagger';
 
+import { bullBoardAdapter } from './config/bull-board';
+import { verifyWebhookSignature } from './middleware/verifyWebhook';
 import { errorHandler } from './middleware/error-handler';
 
 import { authRoutes } from './routes/auth.routes';
@@ -16,14 +18,24 @@ import adminRoutes from './routes/admin.routes';
 import './events/auth.events';
 import './events/admin.events';
 import './events/document.events';
-import { bullBoardAdapter } from './config/bull-board';
+import './events/cache.events';
 
 
 const app = express();
 
+const secret = process.env.WEBHOOK_SECRET;
+
 // === MIDDLEWARE (runs on every request) ===
 app.use(helmet());              // Security headers
 app.use(cors());                // Cross-origin requests
+// Capture raw body for webhook routes BEFORE express.json()
+app.use('/webhooks', verifyWebhookSignature(secret as string, "x-signature"), express.raw({
+  type: 'application/json',
+  verify: (req: any, res, buf) => {
+    req.rawBody = buf;
+  },
+}));
+
 app.use(express.json());        // Parse JSON request bodies
 
 // Serve Swagger UI
