@@ -1,6 +1,7 @@
 import { DOC_EVENTS } from "../events/document.events";
 import { NotFoundError } from "../lib/errors";
 import { appEvents } from "../lib/events";
+import { logger } from "../lib/logger";
 import { prisma } from "../lib/prisma";
 import { queueDocumentForProcessing } from "../queues/document.queue";
 
@@ -72,7 +73,14 @@ export async function createDocument(data: {
   title: string;
   content: string;
   userId: string;
+  correlationId: string;
 }) {
+  logger.info("Creating document", {
+    correlationId: data.correlationId,
+    userId: data.userId,
+    title: data.title,
+  });
+
   const doc = await prisma.document.create({
     data: {
       userId: data.userId,
@@ -83,7 +91,7 @@ export async function createDocument(data: {
     },
   });
 
-  const jobId = await queueDocumentForProcessing(doc.id, data.userId);
+  const jobId = await queueDocumentForProcessing(doc.id, data.userId, data.correlationId);
 
   appEvents.emit(DOC_EVENTS.CREATED, {
     userId: data.userId,

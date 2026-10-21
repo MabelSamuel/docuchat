@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import dotenv from 'dotenv';
+import { logger } from './logger';
 
 // Load .env file into process.env
 dotenv.config();
@@ -31,8 +32,9 @@ const envSchema = z.object({
 const parsed = envSchema.safeParse(process.env);
 
 if (!parsed.success) {
-  console.error('\n❌ Invalid environment variables:');
-  console.error(parsed.error.format());
+  logger.error('Invalid environment variables', {
+    errors: parsed.error.format(),
+  });
   process.exit(1); // Crash immediately, do not start
 }
 

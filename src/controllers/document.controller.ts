@@ -31,7 +31,7 @@ export async function listDocuments(req: Request, res: Response) {
 }
 
 export async function createDocument(req: Request, res: Response) {
-  const doc = await documentService.createDocument({ ...req.body, userId: req.user!.id });
+  const doc = await documentService.createDocument({ ...req.body, userId: req.user!.id, correlationId: (req as any).correlationId, });
   res.status(202).json({ success: true, data: doc });
 }
 

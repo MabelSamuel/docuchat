@@ -1,5 +1,6 @@
 import { appEvents } from '../lib/events';
 import { prisma } from '../lib/prisma';
+import { logger, serializeError } from '../lib/logger';
 
 export const DOC_EVENTS = {
   CREATED: 'doc:created',
@@ -23,7 +24,11 @@ appEvents.on(DOC_EVENTS.CREATED, async (data) => {
       },
     });
   } catch (error) {
-    console.error('Failed to log document creation:', error);
+    logger.error('Failed to log document creation', {
+      userId: data.userId,
+      documentId: data.documentId,
+      error: serializeError(error),
+    });
   }
 });
 
@@ -43,6 +48,10 @@ appEvents.on(DOC_EVENTS.DELETED, async (data) => {
       },
     });
   } catch (error) {
-    console.error('Failed to log document deletion:', error);
+    logger.error('Failed to log document deletion', {
+      userId: data.deletedBy,
+      documentId: data.documentId,
+      error: serializeError(error),
+    });
   }
 });

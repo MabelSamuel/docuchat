@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { verifyWebhookSignature } from '../middleware/verifyWebhook';
 import { prisma } from '../lib/prisma';
 import { documentQueue } from '../queues/document.queue';
+import { logger, serializeError } from '../lib/logger';
 
 const router = Router();
 
@@ -39,26 +40,35 @@ router.post(
 
     // Queue the actual work
     try {
-      await processWebhookEvent(event);
+      await processWebhookEvent(event, (req as any).correlationId);
       await prisma.webhookEvent.update({
         where: { id: event.id },
         data: { processedAt: new Date() },
       });
     } catch (error) {
-      console.error(`Webhook ${event.id} processing failed:`, error);
+      logger.error('Webhook processing failed', {
+        correlationId: (req as any).correlationId,
+        webhookEventId: event.id,
+        eventType: event.type,
+        error: serializeError(error),
+      });
       // Don't mark processedAt. The provider will retry.
     }
   }
 );
 
-async function processWebhookEvent(event: any) {
+async function processWebhookEvent(event: any, correlationId?: string) {
   // Route to the right handler based on event type
   switch (event.type) {
     case 'document.imported':
       // Queue document processing
       break;
     default:
-      console.log(`Unhandled webhook event type: ${event.type}`);
+      logger.info('Unhandled webhook event type', {
+        correlationId,
+        webhookEventId: event.id,
+        eventType: event.type,
+      });
   }
 }
 

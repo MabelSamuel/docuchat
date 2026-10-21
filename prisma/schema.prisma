@@ -1,9 +1,11 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "postgresql"       // Postgresql for development
+  provider   = "postgresql"       // Postgresql for development
+  extensions = [vector]
 }
 
 model User {
@@ -115,6 +117,7 @@ model Chunk {
   index      Int
   content    String
   tokenCount Int      @default(0)
+  embedding  Unsupported("vector(1536)")?  // text-embedding-3-small
   createdAt  DateTime @default(now())
 
   document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)

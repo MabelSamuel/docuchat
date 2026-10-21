@@ -1,5 +1,6 @@
 import { appEvents } from '../lib/events';
 import { prisma } from '../lib/prisma';
+import { logger, serializeError } from '../lib/logger';
 
 appEvents.on('admin:role-assigned', async (data) => {
   try {
@@ -17,7 +18,12 @@ appEvents.on('admin:role-assigned', async (data) => {
       },
     });
   } catch (error) {
-    console.error('Failed to log role assignment:', error);
+    logger.error('Failed to log role assignment', {
+      userId: data.assignedBy,
+      targetUserId: data.targetUserId,
+      roleName: data.roleName,
+      error: serializeError(error),
+    });
   }
 });
 
@@ -37,6 +43,11 @@ appEvents.on('admin:role-revoked', async (data) => {
       },
     });
   } catch (error) {
-    console.error('Failed to log role revocation:', error);
+    logger.error('Failed to log role revocation', {
+      userId: data.revokedBy,
+      targetUserId: data.targetUserId,
+      roleName: data.roleName,
+      error: serializeError(error),
+    });
   }
 });

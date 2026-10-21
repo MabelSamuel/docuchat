@@ -1,4 +1,23 @@
 import { Router } from 'express';
+import { authenticate } from '../middleware/authenticate';
+import { chatLimiter } from '../middleware/rateLimiter';
+import { requirePermission } from '../middleware/authorize';
+import { validate } from '../middleware/validate';
+import { listConversations, sendMessage } from '../controllers/chat.controller';
+import { sendMessageSchema } from '../validators/conversation.validator';
+import { conditionalGet } from '../middleware/etag';
 
-// router.get('/conversations', conditionalGet(), listConversations);
-export const chatRoutes = Router();
+
+const router = Router();
+router.use(authenticate);
+
+router.get('/conversations', conditionalGet(), listConversations);
+
+router.post('/:id/messages',
+  chatLimiter,              // Chat-specific limit
+  requirePermission('conversations:create'),
+  validate(sendMessageSchema),
+  sendMessage
+);
+
+export { router as chatRoutes };

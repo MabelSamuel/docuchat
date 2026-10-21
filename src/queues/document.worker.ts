@@ -4,14 +4,19 @@ import { prisma } from "../lib/prisma";
 import { appEvents } from "../lib/events";
 import { estimateTokens, splitIntoChunks } from "../lib/chunker";
 import { deadLetterQueue } from "./dead-letter.queue";
+import { logger, serializeError } from "../lib/logger";
 
 const worker = new Worker(
   "document-processing",
   async (job: Job) => {
-    const { documentId, userId } = job.data;
-    console.log(
-      `Processing document ${documentId} (attempt ${job.attemptsMade + 1})`,
-    );
+    const { documentId, userId, correlationId } = job.data;
+    logger.info("Processing document", {
+      jobId: job.id,
+      documentId,
+      userId,
+      correlationId,
+      attempt: job.attemptsMade + 1,
+    });
 
     // Step 1: Fetch the document content
     const doc = await prisma.document.findUniqueOrThrow({
@@ -82,7 +87,12 @@ const worker = new Worker(
 
 // Event listeners for logging
 worker.on("completed", (job) => {
-  console.log(`Job ${job.id} completed: ${job.returnvalue?.chunks} chunks`);
+  logger.info("Job completed", {
+    jobId: job.id,
+    documentId: job.data.documentId,
+    userId: job.data.userId,
+    chunks: job.returnvalue?.chunks,
+  });
 });
 
 worker.on("failed", async (job, error) => {
@@ -90,7 +100,13 @@ worker.on("failed", async (job, error) => {
 
   // Check if all attempts exhausted
   if (job.attemptsMade >= (job.opts.attempts ?? 3)) {
-    console.error(`Job ${job.id} permanently failed. Moving to DLQ.`);
+    logger.error("Job permanently failed, moving to DLQ", {
+      jobId: job.id,
+      documentId: job.data.documentId,
+      userId: job.data.userId,
+      attempts: job.attemptsMade,
+      error: serializeError(error),
+    });
 
     await deadLetterQueue.add("failed-document", {
       originalJobId: job.id,
@@ -104,7 +120,10 @@ worker.on("failed", async (job, error) => {
 });
 
 worker.on("error", (error) => {
-  console.error("Worker error:", error);
+  logger.error("Worker error", {
+    queue: "document-processing",
+    error: serializeError(error),
+  });
 });
 
 export { worker };

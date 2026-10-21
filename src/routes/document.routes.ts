@@ -16,6 +16,7 @@ import {
 import { prisma } from '../lib/prisma';
 import { documentQueue } from '../queues/document.queue';
 import { conditionalGet } from '../middleware/etag';
+import { uploadLimiter } from '../middleware/rateLimiter';
 
 
 const router = Router();
@@ -28,6 +29,7 @@ router.get('/',
 );
 
 router.post('/',
+  uploadLimiter,
   validate(createDocumentSchema),
   requirePermission('documents:create'),
   createDocument

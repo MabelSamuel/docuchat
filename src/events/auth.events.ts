@@ -1,5 +1,6 @@
 import { appEvents } from '../lib/events';
 import { prisma } from '../lib/prisma';
+import { logger, serializeError } from '../lib/logger';
 
 // ── Define the event names as constants ─────────────
 export const AUTH_EVENTS = {
@@ -31,7 +32,10 @@ appEvents.on(AUTH_EVENTS.USER_REGISTERED, async (user) => {
     });
   } catch (error) {
     // Log but don't crash. This is a side effect.
-    console.error('Failed to log signup:', error);
+    logger.error('Failed to log signup', {
+      userId: user.id,
+      error: serializeError(error),
+    });
   }
 });
 
@@ -45,7 +49,10 @@ appEvents.on(AUTH_EVENTS.USER_REGISTERED, async (user) => {
       },
     });
   } catch (error) {
-    console.error('Failed to create welcome conversation:', error);
+    logger.error('Failed to create welcome conversation', {
+      userId: user.id,
+      error: serializeError(error),
+    });
   }
 });
 
@@ -65,18 +72,25 @@ appEvents.on(AUTH_EVENTS.USER_LOGGED_IN, async (data) => {
       },
     });
   } catch (error) {
-    console.error('Failed to log login:', error);
+    logger.error('Failed to log login', {
+      userId: data.userId,
+      error: serializeError(error),
+    });
   }
 });
 
 // Listener 4: Track failed login attempts
 appEvents.on(AUTH_EVENTS.LOGIN_FAILED, async (data) => {
   try {
-    console.warn(
-      `Failed login attempt for ${data.email} from ${data.deviceInfo}`
-    );
+    logger.warn('Failed login attempt', {
+      email: data.email,
+      deviceInfo: data.deviceInfo,
+    });
     // In Week 3 we'll add rate limiting based on failed attempts
   } catch (error) {
-    console.error('Failed to log failed login:', error);
+    logger.error('Failed to log failed login', {
+      email: data.email,
+      error: serializeError(error),
+    });
   }
 });
