@@ -14,6 +14,7 @@ export async function sendMessage(req: Request, res: Response) {
     userId: req.user!.id,
     content: req.body.content,
     documentId: req.body.documentId,
+    correlationId: (req as any).correlationId,
   });
   res.status(201).json({ success: true, data: message });
 }

@@ -43,3 +43,21 @@ export const cacheOperations = new client.Counter({
 
 // Export the registry for the /metrics endpoint
 export const metricsRegistry = client.register;
+
+export const ingestionDuration = new client.Histogram({
+  name: 'docuchat_ingestion_duration_seconds',
+  help: 'Document ingestion duration',
+  labelNames: ['format'],
+  buckets: [1, 5, 10, 30, 60, 120, 300],
+});
+
+export const chunksPerDocument = new client.Histogram({
+  name: 'docuchat_chunks_per_document',
+  help: 'Number of chunks generated per document',
+  buckets: [5, 10, 25, 50, 100, 250, 500],
+});
+
+export const embeddingCacheHitRate = new client.Gauge({
+  name: 'docuchat_embedding_cache_hit_rate',
+  help: 'Percentage of embedding requests served from cache',
+});

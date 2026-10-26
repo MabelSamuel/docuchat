@@ -21,6 +21,8 @@ import "./events/admin.events";
 import "./events/document.events";
 import "./events/cache.events";
 import "./events/security.events";
+import './events/ingestion.events';
+
 import { sanitizeInput } from "./middleware/sanitize";
 import { requestLogger } from "./middleware/requestLogger";
 import { metricsMiddleware } from "./middleware/metricsMiddleware";

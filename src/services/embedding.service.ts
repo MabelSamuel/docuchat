@@ -8,8 +8,26 @@ import crypto from 'crypto';
 const EMBEDDING_MODEL = 'text-embedding-3-small';
 const EMBEDDING_DIMENSIONS = 1536;
 
+interface EmbeddingContext {
+  userId?: string | undefined;
+  documentId?: string | undefined;
+}
+
+function emitEmbeddingGenerated(context: EmbeddingContext, tokensUsed: number) {
+  appEvents.emit('ai:embedding-generated', {
+    userId: context.userId,
+    documentId: context.documentId,
+    model: EMBEDDING_MODEL,
+    tokensUsed,
+    // Approximate cost: $0.02 per 1M tokens
+    costUsd: (tokensUsed / 1_000_000) * 0.02,
+    cached: false,
+  });
+}
+
 export async function generateEmbedding(
-  text: string
+  text: string,
+  context: EmbeddingContext = {}
 ): Promise<number[]> {
   const startTime = Date.now();
 
@@ -29,17 +47,21 @@ export async function generateEmbedding(
     tokensUsed: response.data.usage?.total_tokens,
   });
 
+  emitEmbeddingGenerated(context, response.data.usage?.total_tokens ?? 0);
+
   return embedding;
 }
 
 export async function generateEmbeddings(
-  texts: string[]
+  texts: string[],
+  context: EmbeddingContext = {}
 ): Promise<number[][]> {
   if (texts.length === 0) return [];
 
   // OpenAI supports up to 2048 inputs per request
   const BATCH_SIZE = 100; // Stay well under the limit
   const allEmbeddings: number[][] = [];
+  let totalTokens = 0;
 
   for (let i = 0; i < texts.length; i += BATCH_SIZE) {
     const batch = texts.slice(i, i + BATCH_SIZE);
@@ -63,7 +85,11 @@ export async function generateEmbeddings(
       totalTexts: texts.length,
       tokensUsed: response.data.usage?.total_tokens,
     });
+
+    totalTokens += response.data.usage?.total_tokens ?? 0;
   }
+
+  emitEmbeddingGenerated(context, totalTokens);
 
   return allEmbeddings;
 }
@@ -103,7 +129,8 @@ function contentHash(text: string): string {
 }
 
 export async function generateEmbeddingCached(
-  text: string
+  text: string,
+  context: EmbeddingContext = {}
 ): Promise<number[]> {
   const hash = contentHash(text);
   const cacheKey = `embed:${hash}`;
@@ -116,17 +143,7 @@ export async function generateEmbeddingCached(
   }
 
   // Cache miss — generate
-  const embedding = await generateEmbedding(text);
-
-appEvents.emit('ai:embedding-generated', {
-  userId,
-  documentId,
-  model: EMBEDDING_MODEL,
-  tokensUsed: response.data.usage.total_tokens,
-  // Approximate cost: $0.02 per 1M tokens
-  costUsd: (response.data.usage.total_tokens / 1_000_000) * 0.02,
-  cached: false,
-});
+  const embedding = await generateEmbedding(text, context);
 
   // Cache for 7 days (embeddings don't change for the same input)
   await cacheSet(cacheKey, embedding, CACHE_TTL.EMBEDDING);
@@ -136,19 +153,20 @@ appEvents.emit('ai:embedding-generated', {
 }
 
 export async function generateEmbeddingsBatchCached(
-  texts: string[]
+  texts: string[],
+  context: EmbeddingContext = {}
 ): Promise<number[][]> {
   const results: (number[] | null)[] = new Array(texts.length).fill(null);
   const uncached: { index: number; text: string }[] = [];
 
   // 1. Check cache for each text
-  for (let i = 0; i < texts.length; i++) {
-    const hash = contentHash(texts[i]);
+  for (const [i, text] of texts.entries()) {
+    const hash = contentHash(text);
     const cached = await cacheGet<number[]>(`embed:${hash}`);
     if (cached) {
       results[i] = cached;
     } else {
-      uncached.push({ index: i, text: texts[i] });
+      uncached.push({ index: i, text });
     }
   }
 
@@ -161,24 +179,19 @@ export async function generateEmbeddingsBatchCached(
   // 2. Generate embeddings only for uncached texts
   if (uncached.length > 0) {
     const newEmbeddings = await generateEmbeddings(
-      uncached.map(u => u.text)
+      uncached.map(u => u.text),
+      context
     );
 
-appEvents.emit('ai:embedding-generated', {
-  userId,
-  documentId,
-  model: EMBEDDING_MODEL,
-  tokensUsed: response.data.usage.total_tokens,
-  // Approximate cost: $0.02 per 1M tokens
-  costUsd: (response.data.usage.total_tokens / 1_000_000) * 0.02,
-  cached: false,
-});
-
     // 3. Cache the new embeddings and fill in results
-    for (let i = 0; i < uncached.length; i++) {
-      const hash = contentHash(uncached[i].text);
-      await cacheSet(`embed:${hash}`, newEmbeddings[i], CACHE_TTL.EMBEDDING);
-      results[uncached[i].index] = newEmbeddings[i];
+    for (const [i, { index, text }] of uncached.entries()) {
+      const embedding = newEmbeddings[i];
+      if (!embedding) {
+        throw new Error(`Missing embedding for input ${index}`);
+      }
+      const hash = contentHash(text);
+      await cacheSet(`embed:${hash}`, embedding, CACHE_TTL.EMBEDDING);
+      results[index] = embedding;
     }
   }
 
