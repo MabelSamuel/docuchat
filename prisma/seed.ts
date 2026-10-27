@@ -1,4 +1,5 @@
 import { prisma } from "../src/lib/prisma";
+import { AGENT_SYSTEM_PROMPT, RAG_SYSTEM_PROMPT } from "../src/config/prompts";
 
 async function seedRBAC() {
   // Define permissions
@@ -87,3 +88,44 @@ async function seedRBAC() {
 
   console.log('RBAC seeded: 3 roles, 9 permissions');
 }
+
+async function seedPrompts() {
+  await prisma.promptTemplate.upsert({
+    where: { taskType_version: { taskType: 'chat', version: 'v1' } },
+    update: {},
+    create: {
+      taskType: 'chat',
+      version: 'v1',
+      name: 'RAG Chat - Initial',
+      content: RAG_SYSTEM_PROMPT,  // From your current prompts.ts
+      isActive: true,
+    },
+  });
+
+  await prisma.promptTemplate.upsert({
+    where: { taskType_version: { taskType: 'agent', version: 'v1' } },
+    update: {},
+    create: {
+      taskType: 'agent',
+      version: 'v1',
+      name: 'Research Agent - Initial',
+      content: AGENT_SYSTEM_PROMPT,
+      isActive: true,
+    },
+  });
+
+  console.log('Prompts seeded: chat v1, agent v1');
+}
+
+async function main() {
+  await seedRBAC();
+  await seedPrompts();
+}
+
+main()
+  .catch((error) => {
+    console.error(error);
+    process.exit(1);
+  })
+  .finally(() => prisma.$disconnect());
+
