@@ -79,3 +79,17 @@ export const agentTerminations = new client.Counter({
   help: 'Agent termination reasons',
   labelNames: ['reason'],
 });
+
+// Counter: MCP tool calls we serve (inbound) and make (outbound)
+export const mcpToolCalls = new client.Counter({
+  name: 'docuchat_mcp_tool_calls_total',
+  help: 'MCP tool calls',
+  labelNames: ['tool', 'source', 'status'], // inbound/outbound, success/error
+});
+
+export const mcpToolDuration = new client.Histogram({
+  name: 'docuchat_mcp_tool_duration_seconds',
+  help: 'MCP tool call duration in seconds',
+  labelNames: ['tool', 'source'],
+  buckets: [0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
+});

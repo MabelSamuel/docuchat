@@ -220,7 +220,9 @@ const MONTHLY_BUDGETS: Record<string, number> = {
   enterprise: 200.00,
 };
 
-async function enforceBudget(userId: string): Promise<void> {
+// Exported so AI work that doesn't go through mcpComplete (the agent loop,
+// MCP tool calls) still hits the same cost ceiling
+export async function enforceBudget(userId: string): Promise<void> {
   // Get user's tier
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -323,5 +325,40 @@ async function auditLog(data: {
   }
 }
 
+// Audit an MCP tool call. Reuses AIAuditLog with taskType 'mcp_tool' (calls we
+// serve) or 'mcp_external_tool' (calls the agent makes to external servers) and
+// the tool name in the model column, so filter on taskType for LLM-only analytics.
+export async function auditToolCall(data: {
+  userId: string;
+  correlationId: string;
+  direction: 'inbound' | 'outbound';
+  tool: string;
+  args: unknown;
+  status: 'success' | 'error';
+  latencyMs: number;
+  output?: string | undefined;
+  injectionFlagged?: boolean;
+}): Promise<void> {
+  const flag = data.injectionFlagged ? '[injection-filtered] ' : '';
+  try {
+    await prisma.aIAuditLog.create({
+      data: {
+        userId: data.userId,
+        correlationId: data.correlationId,
+        taskType: data.direction === 'inbound' ? 'mcp_tool' : 'mcp_external_tool',
+        model: data.tool,
+        promptVersion: 'n/a',
+        inputTokens: 0,
+        outputTokens: 0,
+        costUsd: 0,
+        latencyMs: data.latencyMs,
+        inputSummary: JSON.stringify(data.args ?? {}).substring(0, 500),
+        outputSummary: `[${data.status}] ${flag}${data.output ?? ''}`.substring(0, 500),
+      },
+    });
+  } catch (error) {
+    logger.error('Tool audit log failed', { error, tool: data.tool });
+  }
+}
 
 

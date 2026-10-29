@@ -7,14 +7,26 @@ export const createConversationSchema = z.object({
   }),
 });
 
+export const askQuestionSchema = z.object({
+  params: z.object({
+    id: z.string().min(1, 'Invalid conversation ID'),
+  }),
+  body: z.object({
+    question: z.string()
+      .min(1, 'Question cannot be empty')
+      .max(10000, 'Question too long'),
+    documentId: z.string().min(1, 'documentId is required'),
+  }),
+});
+
 export const sendMessageSchema = z.object({
   params: z.object({
-    id: z.string().uuid('Invalid conversation ID'),
+    id: z.string().min(1, 'Invalid conversation ID'),
   }),
   body: z.object({
     content: z.string()
       .min(1, 'Message cannot be empty')
       .max(10000, 'Message too long'),
-    documentId: z.string().uuid().optional(),
+    documentId: z.string().min(1).optional(),
   }),
 });

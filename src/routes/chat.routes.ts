@@ -3,8 +3,8 @@ import { authenticate } from '../middleware/authenticate';
 import { chatLimiter } from '../middleware/rateLimiter';
 import { requirePermission } from '../middleware/authorize';
 import { validate } from '../middleware/validate';
-import { listConversations, sendMessage } from '../controllers/chat.controller';
-import { sendMessageSchema } from '../validators/conversation.validator';
+import { askQuestion, listConversations, sendMessage } from '../controllers/chat.controller';
+import { askQuestionSchema, sendMessageSchema } from '../validators/conversation.validator';
 import { conditionalGet } from '../middleware/etag';
 
 
@@ -18,6 +18,13 @@ router.post('/:id/messages',
   requirePermission('conversations:create'),
   validate(sendMessageSchema),
   sendMessage
+);
+
+router.post('/:id/ask',
+  chatLimiter,
+  requirePermission('conversations:create'),
+  validate(askQuestionSchema),
+  askQuestion
 );
 
 export { router as chatRoutes };

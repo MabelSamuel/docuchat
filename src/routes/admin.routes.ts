@@ -3,7 +3,12 @@ import { authenticate } from '../middleware/authenticate';
 import { requirePermission } from '../middleware/authorize';
 import { prisma } from '../lib/prisma';
 import { appEvents } from '../lib/events';
-import { NotFoundError } from '../lib/errors';
+import { NotFoundError, ValidationError } from '../lib/errors';
+import {
+  getCachedReviewMetrics,
+  isMetricsPeriod,
+  METRICS_PERIODS,
+} from '../services/review-metrics.service';
 
 const router = Router();
 router.use(authenticate);
@@ -95,5 +100,24 @@ router.delete('/users/:userId/roles/:roleName',
     } catch (error) { next(error); }
   }
 );
+
+// Admin analytics dashboard (cached for 5 minutes)
+router.get('/analytics', async (req, res, next) => {
+  try {
+    const period = req.query.period ?? '24h';
+    if (!isMetricsPeriod(period)) {
+      throw new ValidationError(
+        `Invalid period. Use one of: ${METRICS_PERIODS.join(', ')}`
+      );
+    }
+
+    const review = await getCachedReviewMetrics(period);
+
+    res.json({
+      success: true,
+      data: { review },
+    });
+  } catch (error) { next(error); }
+});
 
 export default router;

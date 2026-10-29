@@ -23,3 +23,28 @@ export function detectPromptInjection(input: string): {
 
   return { isSuspicious, sanitized };
 }
+
+// Runs detectPromptInjection over every string in a tool's arguments
+export function sanitizeToolArgs<T>(args: T): { isSuspicious: boolean; sanitized: T } {
+  let isSuspicious = false;
+
+  const walk = (value: any): any => {
+    if (typeof value === 'string') {
+      const result = detectPromptInjection(value);
+      if (result.isSuspicious) isSuspicious = true;
+      return result.sanitized;
+    }
+    if (Array.isArray(value)) return value.map(walk);
+    if (value && typeof value === 'object') {
+      const clean: any = {};
+      for (const key of Object.keys(value)) {
+        clean[key] = walk(value[key]);
+      }
+      return clean;
+    }
+    return value;
+  };
+
+  const sanitized = walk(args) as T;
+  return { isSuspicious, sanitized };
+}

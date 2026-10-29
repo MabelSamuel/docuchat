@@ -15,6 +15,9 @@ import { authRoutes } from "./routes/auth.routes";
 import { documentRoutes } from "./routes/document.routes";
 import { chatRoutes } from "./routes/chat.routes";
 import adminRoutes from "./routes/admin.routes";
+import agentRoutes from "./routes/agent";
+import { reviewRoutes } from "./routes/review.routes";
+import { userRoutes } from "./routes/user.routes";
 
 import "./events/auth.events";
 import "./events/admin.events";
@@ -29,7 +32,11 @@ import { metricsMiddleware } from "./middleware/metricsMiddleware";
 import { metricsRegistry } from "./lib/metrics";
 import healthRoutes from "./routes/health";
 
+import { mountMCPTransport } from './mcp/transport';
+
 const app = express();
+
+mountMCPTransport(app);
 
 const secret = process.env.WEBHOOK_SECRET;
 
@@ -146,8 +153,11 @@ app.use("/api/v1", apiLimiter);
 app.use("/api/v1/auth", authLimiter, authRoutes);
 app.use("/api/v1/documents", documentRoutes);
 app.use("/api/v1/chat", chatRoutes);
+app.use("/api/v1/agent", agentRoutes);
 
 app.use("/api/v1/admin", adminRoutes);
+app.use("/api/v1/reviews", reviewRoutes);
+app.use("/api/v1/users", userRoutes);
 app.use("/admin/queues", bullBoardAdapter.getRouter());
 
 // === ERROR HANDLER (must be last middleware) ===

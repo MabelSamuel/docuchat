@@ -5,7 +5,7 @@ import { verifyAccessToken } from '../lib/tokens';
 declare global {
   namespace Express {
     interface Request {
-      user?: { id: string; role: string };
+      user?: { id: string; role: string; tier: string };
     }
   }
 }
@@ -30,7 +30,12 @@ export function authenticate(
     }
 
     // Attach user context to the request
-    req.user = { id: payload.sub, role: payload.role };
+    // Older tokens only carry the tier in the role claim
+    req.user = {
+      id: payload.sub,
+      role: payload.role,
+      tier: payload.tier ?? payload.role,
+    };
     next();
 
   } catch (error: any) {

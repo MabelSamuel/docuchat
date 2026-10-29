@@ -14,7 +14,6 @@ export const TOOL_REGISTRY: Record<string, ToolDefinition> = {
 // Convert to OpenAI function calling format
 export function getToolSchemas() {
   return Object.values(TOOL_REGISTRY)
-    .filter(t => t.name !== 'final_answer')  // final_answer handled separately
     .map(tool => ({
       type: 'function' as const,
       function: {

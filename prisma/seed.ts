@@ -22,6 +22,8 @@ async function seedRBAC() {
       description: 'Manage user accounts' },
     { name: 'roles:manage', resource: 'roles', action: 'manage',
       description: 'Manage roles and permissions' },
+    { name: 'reviews:manage', resource: 'reviews', action: 'manage',
+      description: 'Review low-confidence AI answers' },
   ];
 
   // Upsert all permissions
@@ -86,7 +88,7 @@ async function seedRBAC() {
     }
   }
 
-  console.log('RBAC seeded: 3 roles, 9 permissions');
+  console.log(`RBAC seeded: ${roleDefs.length} roles, ${permissionDefs.length} permissions`);
 }
 
 async function seedPrompts() {

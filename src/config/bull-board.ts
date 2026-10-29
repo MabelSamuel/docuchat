@@ -3,6 +3,7 @@ import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
 import { ExpressAdapter } from '@bull-board/express';
 import { documentQueue } from '../queues/document.queue';
 import { deadLetterQueue } from '../queues/dead-letter.queue';
+import { escalationQueue } from '../queues/escalation.queue';
 
 const serverAdapter = new ExpressAdapter();
 serverAdapter.setBasePath('/admin/queues');
@@ -11,6 +12,7 @@ createBullBoard({
   queues: [
     new BullMQAdapter(documentQueue),
     new BullMQAdapter(deadLetterQueue),
+    new BullMQAdapter(escalationQueue),
   ],
   serverAdapter,
 });

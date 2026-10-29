@@ -1,5 +1,5 @@
 import './lib/config'; // Load and validate env vars first
-import { logger } from './lib/logger';
+import { logger, serializeError } from './lib/logger';
 import { prisma } from './lib/prisma';
 import { redisConnection } from './queues/connection';
 
@@ -7,14 +7,23 @@ import { redisConnection } from './queues/connection';
 import './events/document.events';
 
 import { worker } from './queues/document.worker';
+import { escalationWorker } from './queues/escalation.worker';
+import { escalationQueue, scheduleEscalationChecks } from './queues/escalation.queue';
 
 logger.info({ event: 'worker:started', queue: worker.name });
+logger.info({ event: 'worker:started', queue: escalationWorker.name });
+
+scheduleEscalationChecks().catch((error) => {
+  logger.error('Failed to schedule escalation checks', { error: serializeError(error) });
+});
 
 // === GRACEFUL SHUTDOWN ===
 // Let in-flight jobs finish before exiting, so they aren't left half-processed
 async function shutdown(signal: string) {
   logger.info({ event: 'worker:stopping', signal });
   await worker.close();
+  await escalationWorker.close();
+  await escalationQueue.close();
   await redisConnection.quit();
   await prisma.$disconnect();
   process.exit(0);

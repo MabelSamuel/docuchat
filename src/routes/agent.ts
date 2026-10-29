@@ -3,6 +3,8 @@ import { requirePermission } from '../middleware/authorize';
 import { chatLimiter } from '../middleware/rateLimiter';
 import { runAgent } from '../agents/executor';
 import { authenticate } from '../middleware/authenticate';
+import { validate } from '../middleware/validate';
+import { researchSchema } from '../validators/agent.validator';
 
 const router = Router();
 router.use(authenticate);
@@ -10,6 +12,7 @@ router.use(authenticate);
 router.post('/research',
   chatLimiter,
   requirePermission('conversations:create'),
+  validate(researchSchema),
   async (req, res, next) => {
     try {
       const result = await runAgent({

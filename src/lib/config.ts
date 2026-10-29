@@ -26,6 +26,9 @@ const envSchema = z.object({
 
   // Redis (needed from Week 3 onward)
   REDIS_URL: z.string().optional(),
+
+  // External MCP server the agent may call (unset = agent uses native tools only)
+  EXTERNAL_MCP_URL: z.string().url().optional(),
 });
 
 // Validate process.env against the schema

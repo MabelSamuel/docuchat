@@ -3,6 +3,12 @@ import { openaiBreaker } from '../lib/http/openai.breaker';
 import { logger } from '../lib/logger';
 import { appEvents } from '../lib/events';
 import { AGENT_SYSTEM_PROMPT } from '../config/prompts';
+import {
+  discoverExternalTools,
+  callExternalTool,
+  closeExternalClients,
+} from '../mcp/client';
+import { enforceBudget } from '../services/mcp.service';
 
 interface AgentConfig {
   maxIterations: number;
@@ -78,115 +84,86 @@ export async function runAgent(options: {
     { role: 'user', content: question },
   ];
 
-  const toolSchemas = getToolSchemas();
+  // The agent calls OpenAI directly, so check the monthly cost ceiling up front
+  await enforceBudget(userId);
 
-  logger.info('Agent started', {
-    correlationId, question: question.substring(0, 100),
-    maxIterations: config.maxIterations,
-    costCeiling: config.costCeilingUsd,
-  });
+  const nativeTools = getToolSchemas();
 
-  while (iteration < config.maxIterations) {
-    // ── CHECK TIMEOUT ──
-    const elapsed = Date.now() - startTime;
-    if (elapsed > config.timeoutMs) {
-      logger.warn('Agent timeout', { correlationId, iteration, elapsed });
-      return finish(buildResult('timeout', trace, totalCostUsd, iteration));
-    }
+  // Allowlisted tools from configured MCP servers only; a server that's
+  // down or unconfigured contributes nothing rather than failing the run
+  const externalTools = await discoverExternalTools();
 
-    // ── CHECK COST ──
-    if (totalCostUsd >= config.costCeilingUsd) {
-      logger.warn('Agent cost ceiling hit', {
-        correlationId, iteration, totalCostUsd,
-      });
-      return finish(buildResult('cost_limit', trace, totalCostUsd, iteration));
-    }
+  // Strip the internal _mcp* fields before sending schemas to OpenAI
+  const allTools = [...nativeTools, ...externalTools].map(
+    ({ type, function: fn }) => ({ type, function: fn }),
+  );
 
-    iteration++;
-    const stepStart = Date.now();
+  const externalToolMap = new Map(
+    externalTools.map((t) => [t.function.name, t]),
+  );
 
-    // ── THINK: Ask the model what to do ──
-    const response = await openaiBreaker.fire('/chat/completions', {
-      model: config.model,
-      messages,
-      tools: toolSchemas,
-      tool_choice: 'auto',
-      temperature: 0.1,
+  try {
+    logger.info('Agent started', {
+      correlationId, question: question.substring(0, 100),
+      maxIterations: config.maxIterations,
+      costCeiling: config.costCeilingUsd,
     });
 
-    const usage = response.data.usage;
-    const stepCost =
-      (usage.prompt_tokens / 1_000_000) * 2.50 +
-      (usage.completion_tokens / 1_000_000) * 10.00;
-    totalCostUsd += stepCost;
-    totalTokens += usage.prompt_tokens + usage.completion_tokens;
-
-    const choice = response.data.choices[0];
-    const assistantMessage = choice.message;
-
-    // Add the assistant's response to conversation
-    messages.push(assistantMessage);
-
-    // ── NO TOOL CALL: Model wants to respond directly ──
-    if (!assistantMessage.tool_calls ||
-        assistantMessage.tool_calls.length === 0) {
-      trace.push({
-        step: iteration, phase: 'think',
-        output: assistantMessage.content,
-        durationMs: Date.now() - stepStart, costUsd: stepCost,
-      });
-
-      // Treat direct response as final answer
-      return finish({
-        answer: assistantMessage.content,
-        sources: [],
-        confidence: 'medium',
-        iterations: iteration,
-        totalCostUsd,
-        terminationReason: 'completed',
-        trace,
-      });
-    }
-
-    // ── ACT: Execute each tool call ──
-    for (const toolCall of assistantMessage.tool_calls) {
-      const toolName = toolCall.function.name;
-      const toolArgs = JSON.parse(toolCall.function.arguments);
-
-      logger.info('Agent tool call', {
-        correlationId, iteration, tool: toolName,
-        args: toolArgs,
-      });
-
-      // Validate: is this tool in the registry?
-      const tool = TOOL_REGISTRY[toolName];
-      if (!tool) {
-        const errorResult = {
-          role: 'tool' as const,
-          tool_call_id: toolCall.id,
-          content: `Error: unknown tool "${toolName}"`,
-        };
-        messages.push(errorResult);
-        trace.push({
-          step: iteration, phase: 'act', tool: toolName,
-          input: toolArgs,
-          output: { error: 'Unknown tool' },
-          durationMs: Date.now() - stepStart, costUsd: stepCost,
-        });
-        continue;
+    while (iteration < config.maxIterations) {
+      // ── CHECK TIMEOUT ──
+      const elapsed = Date.now() - startTime;
+      if (elapsed > config.timeoutMs) {
+        logger.warn('Agent timeout', { correlationId, iteration, elapsed });
+        return finish(buildResult('timeout', trace, totalCostUsd, iteration));
       }
 
-      // Check for final_answer
-      if (toolName === 'final_answer') {
+      // ── CHECK COST ──
+      if (totalCostUsd >= config.costCeilingUsd) {
+        logger.warn('Agent cost ceiling hit', {
+          correlationId, iteration, totalCostUsd,
+        });
+        return finish(buildResult('cost_limit', trace, totalCostUsd, iteration));
+      }
+
+      iteration++;
+      const stepStart = Date.now();
+
+      // ── THINK: Ask the model what to do ──
+      const response = await openaiBreaker.fire('/chat/completions', {
+        model: config.model,
+        messages,
+        tools: allTools,
+        tool_choice: 'auto',
+        temperature: 0.1,
+      });
+
+      const usage = response.data.usage;
+      const stepCost =
+        (usage.prompt_tokens / 1_000_000) * 2.50 +
+        (usage.completion_tokens / 1_000_000) * 10.00;
+      totalCostUsd += stepCost;
+      totalTokens += usage.prompt_tokens + usage.completion_tokens;
+
+      const choice = response.data.choices[0];
+      const assistantMessage = choice.message;
+
+      // Add the assistant's response to conversation
+      messages.push(assistantMessage);
+
+      // ── NO TOOL CALL: Model wants to respond directly ──
+      if (!assistantMessage.tool_calls ||
+          assistantMessage.tool_calls.length === 0) {
         trace.push({
-          step: iteration, phase: 'act', tool: 'final_answer',
-          input: toolArgs,
+          step: iteration, phase: 'think',
+          output: assistantMessage.content,
           durationMs: Date.now() - stepStart, costUsd: stepCost,
         });
+
+        // Treat direct response as final answer
         return finish({
-          answer: toolArgs.answer,
-          sources: toolArgs.sources || [],
-          confidence: toolArgs.confidence || 'medium',
+          answer: assistantMessage.content,
+          sources: [],
+          confidence: 'medium',
           iterations: iteration,
           totalCostUsd,
           terminationReason: 'completed',
@@ -194,59 +171,150 @@ export async function runAgent(options: {
         });
       }
 
-      // Validate inputs
-      const validation = tool.parameters.safeParse(toolArgs);
-      if (!validation.success) {
-        const errorResult = {
-          role: 'tool' as const,
-          tool_call_id: toolCall.id,
-          content: `Validation error: ${validation.error.message}`,
-        };
-        messages.push(errorResult);
-        continue;
-      }
+      // ── ACT: Execute each tool call ──
+      for (const toolCall of assistantMessage.tool_calls) {
+        const toolName = toolCall.function.name;
+        const toolArgs = JSON.parse(toolCall.function.arguments);
 
-      // Execute the tool
-      try {
-        const result = await tool.handler(
-          validation.data,
-          { userId, correlationId }
-        );
-
-        // ── OBSERVE: Feed result back to the model ──
-        messages.push({
-          role: 'tool',
-          tool_call_id: toolCall.id,
-          content: JSON.stringify(result.data),
+        logger.info('Agent tool call', {
+          correlationId, iteration, tool: toolName,
+          args: toolArgs,
         });
 
-        trace.push({
-          step: iteration, phase: 'observe', tool: toolName,
-          input: toolArgs, output: result.data,
-          durationMs: Date.now() - stepStart, costUsd: stepCost,
-        });
-      } catch (error) {
-        messages.push({
-          role: 'tool',
-          tool_call_id: toolCall.id,
-          content: `Tool error: ${(error as Error).message}`,
-        });
-        trace.push({
-          step: iteration, phase: 'observe', tool: toolName,
-          input: toolArgs,
-          output: { error: (error as Error).message },
-          durationMs: Date.now() - stepStart, costUsd: stepCost,
-        });
+        // External MCP tool: route to its MCP server
+        const external = externalToolMap.get(toolName);
+        if (external) {
+          try {
+            const result = await callExternalTool(
+              external,
+              toolArgs,
+              { userId, correlationId },
+            );
+            messages.push({
+              role: 'tool',
+              tool_call_id: toolCall.id,
+              content: result,
+            });
+            trace.push({
+              step: iteration,
+              phase: 'observe',
+              tool: toolName,
+              input: toolArgs,
+              output: result,
+              durationMs: Date.now() - stepStart,
+              costUsd: stepCost,
+            });
+          } catch (error) {
+            messages.push({
+              role: 'tool',
+              tool_call_id: toolCall.id,
+              content: `Tool error: ${(error as Error).message}`,
+            });
+            trace.push({
+              step: iteration,
+              phase: 'observe',
+              tool: toolName,
+              input: toolArgs,
+              output: { error: (error as Error).message },
+              durationMs: Date.now() - stepStart,
+              costUsd: stepCost,
+            });
+          }
+          continue;
+        }
+
+        // Validate: is this tool in the registry?
+        const tool = TOOL_REGISTRY[toolName];
+        if (!tool) {
+          const errorResult = {
+            role: 'tool' as const,
+            tool_call_id: toolCall.id,
+            content: `Error: unknown tool "${toolName}"`,
+          };
+          messages.push(errorResult);
+          trace.push({
+            step: iteration, phase: 'act', tool: toolName,
+            input: toolArgs,
+            output: { error: 'Unknown tool' },
+            durationMs: Date.now() - stepStart, costUsd: stepCost,
+          });
+          continue;
+        }
+
+        // Check for final_answer
+        if (toolName === 'final_answer') {
+          trace.push({
+            step: iteration, phase: 'act', tool: 'final_answer',
+            input: toolArgs,
+            durationMs: Date.now() - stepStart, costUsd: stepCost,
+          });
+          return finish({
+            answer: toolArgs.answer,
+            sources: toolArgs.sources || [],
+            confidence: toolArgs.confidence || 'medium',
+            iterations: iteration,
+            totalCostUsd,
+            terminationReason: 'completed',
+            trace,
+          });
+        }
+
+        // Validate inputs
+        const validation = tool.parameters.safeParse(toolArgs);
+        if (!validation.success) {
+          const errorResult = {
+            role: 'tool' as const,
+            tool_call_id: toolCall.id,
+            content: `Validation error: ${validation.error.message}`,
+          };
+          messages.push(errorResult);
+          continue;
+        }
+
+        // Execute the tool
+        try {
+          const result = await tool.handler(
+            validation.data,
+            { userId, correlationId }
+          );
+
+          // ── OBSERVE: Feed result back to the model ──
+          messages.push({
+            role: 'tool',
+            tool_call_id: toolCall.id,
+            content: JSON.stringify(result.data),
+          });
+
+          trace.push({
+            step: iteration, phase: 'observe', tool: toolName,
+            input: toolArgs, output: result.data,
+            durationMs: Date.now() - stepStart, costUsd: stepCost,
+          });
+        } catch (error) {
+          messages.push({
+            role: 'tool',
+            tool_call_id: toolCall.id,
+            content: `Tool error: ${(error as Error).message}`,
+          });
+          trace.push({
+            step: iteration, phase: 'observe', tool: toolName,
+            input: toolArgs,
+            output: { error: (error as Error).message },
+            durationMs: Date.now() - stepStart, costUsd: stepCost,
+          });
+        }
       }
     }
+
+    // Iteration limit reached
+    logger.warn('Agent iteration limit', {
+      correlationId, iterations: iteration, totalCostUsd,
+    });
+
+    return finish(buildResult('iteration_limit', trace, totalCostUsd, iteration));
+  } finally {
+    await closeExternalClients(externalTools);
   }
-
-  // Iteration limit reached
-  logger.warn('Agent iteration limit', {
-    correlationId, iterations: iteration, totalCostUsd,
-  });
-
-  return finish(buildResult('iteration_limit', trace, totalCostUsd, iteration));
 }
 
 function buildResult(

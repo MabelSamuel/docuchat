@@ -9,12 +9,13 @@ const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET!;
 interface TokenPayload {
   sub: string;    // User ID
   role: string;   // User role/tier
+  tier?: string;  // Billing tier for rate limits (absent on tokens issued before it was added)
   type: 'access' | 'refresh';
 }
 
 export function generateAccessToken(user: { id: string; tier: string }) {
   return jwt.sign(
-    { sub: user.id, role: user.tier, type: 'access' },
+    { sub: user.id, role: user.tier, tier: user.tier, type: 'access' },
     ACCESS_SECRET,
     { expiresIn: '15m' }
   );

@@ -8,6 +8,7 @@ export const CACHE_TTL = {
   CONVERSATION_LIST: 120, // 2 minutes
   EMBEDDING: 604800,      // 7 days
   RAG_RESULT: 3600,       // 1 hour
+  REVIEW_METRICS: 300,    // 5 minutes
 } as const;
 
 export const cacheRedis = new IORedis({
