@@ -1,15 +1,29 @@
-import { describe, it, expect } from 'vitest';
+import { afterAll, beforeAll, describe, it, expect, vi } from 'vitest';
 import { semanticSearch } from '../../src/services/search.service';
+import type * as FakeEmbedding from '../helpers/fake-embedding';
+import { deleteTestUsers, seedTestDocument, seedTestUser } from '../helpers/seed';
 
-// IDs of seeded fixtures (test documents must already be ingested)
-const testUserId = process.env.TEST_USER_ID ?? 'test-user';
-const otherUserId = process.env.TEST_OTHER_USER_ID ?? 'other-user';
-const testDocumentId = process.env.TEST_DOCUMENT_ID ?? 'test-document';
+vi.mock('../../src/services/embedding.service', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  ...(await vi.importActual<typeof FakeEmbedding>('../helpers/fake-embedding')).fakeEmbeddingService,
+}));
+
 const correlationId = 'rag-test';
 
 describe('RAG retrieval quality', () => {
-  // Assume test documents are already ingested
-  // with known content about specific topics
+  let testUserId: string;
+  let otherUserId: string;
+  let testDocumentId: string;
+
+  beforeAll(async () => {
+    testUserId = (await seedTestUser()).id;
+    otherUserId = (await seedTestUser()).id;
+    testDocumentId = await seedTestDocument('doc-refund-policy', testUserId);
+  });
+
+  afterAll(async () => {
+    await deleteTestUsers(testUserId, otherUserId);
+  });
 
   it('finds the refund policy when asked about returns', async () => {
     const results = await semanticSearch({

@@ -25,6 +25,7 @@ model User {
   usageLogs     UsageLog[]
   refreshTokens RefreshToken[]
   reviewedItems ReviewQueue[]
+  memories      Memory[]
 
   @@index([email])
 }
@@ -35,6 +36,11 @@ model Conversation {
   title     String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  summary       String?   @db.Text    // NEW: rolling summary
+  summaryTokens Int       @default(0) // NEW: tokens in summary
+  messageCount  Int       @default(0) // NEW: total messages
+
 
   user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   messages Message[]
@@ -266,6 +272,33 @@ enum ReviewPriority {
   NORMAL
   HIGH
   URGENT
+}
+
+model Memory {
+  id          String   @id @default(cuid())
+  userId      String
+  type        MemoryType
+  content     String   @db.Text
+  embedding   Unsupported("vector(1536)")?
+  source      String?         // which conversation/document
+  importance  Float    @default(0.5)  // 0 to 1
+  accessCount Int      @default(0)    // times retrieved
+  lastAccessedAt DateTime?
+  expiresAt   DateTime?       // null = never expires
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+  @@index([expiresAt])
+}
+
+enum MemoryType {
+  FACT          // "User works at Acme Corp"
+  PREFERENCE    // "User prefers concise answers"
+  PATTERN       // "User frequently asks about revenue"
+  CORRECTION    // "User corrected: Q3 was $4.2M not $4.1M"
 }
 
 

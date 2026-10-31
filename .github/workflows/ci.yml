@@ -5,42 +5,132 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  schedule:
+    - cron: "0 6 * * *" # Nightly smoke run against the real LLM
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "24"
+  DATABASE_URL: postgresql://test:test@localhost:5432/docuchat_test
+  REDIS_URL: redis://localhost:6379
+  REDIS_HOST: localhost
+  REDIS_PORT: "6379"
+  NODE_ENV: test
+  JWT_SECRET: ci-jwt-secret-at-least-thirty-two-characters
+  JWT_ACCESS_SECRET: ci-access-secret-at-least-thirty-two-characters
+  JWT_REFRESH_SECRET: ci-refresh-secret-at-least-thirty-two-characters
 
 jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npm run typecheck
+
+  # Unit + component + integration tests (mocked LLM, every commit)
   test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        # Plain postgres:16 lacks the vector extension the migrations create
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: docuchat_test
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U test -d docuchat_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Generate Prisma Client
-        run: npx prisma generate
-
-      - name: Run migrations
-        env:
-          DATABASE_URL: file:./test.db
-        run: npx prisma migrate deploy
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npx prisma migrate deploy
+      - run: npx prisma db seed # Roles/permissions and prompt templates
 
       - name: Run tests
+        run: npm run test:coverage -- --reporter=verbose
         env:
-          DATABASE_URL: file:./test.db
-          JWT_ACCESS_SECRET: ci-access-secret-at-least-thirty-two-characters
-          JWT_REFRESH_SECRET: ci-refresh-secret-at-least-thirty-two-characters
-          NODE_ENV: test
-        run: npm run test:coverage
+          SMOKE_TEST: "false"
 
       - name: Upload coverage report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report
           path: coverage/
+
+  # Real embeddings + real LLM; costs money, so nightly or on demand only
+  smoke:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: docuchat_test
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U test -d docuchat_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npx prisma migrate deploy
+      - run: npx prisma db seed
+
+      - name: Run smoke tests
+        run: npm run test:smoke -- --reporter=verbose
+        env:
+          SMOKE_TEST: "true"
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY_TEST }}

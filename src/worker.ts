@@ -9,12 +9,19 @@ import './events/document.events';
 import { worker } from './queues/document.worker';
 import { escalationWorker } from './queues/escalation.worker';
 import { escalationQueue, scheduleEscalationChecks } from './queues/escalation.queue';
+import { memoryCleanupWorker } from './queues/memory-cleanup.worker';
+import { memoryCleanupQueue, scheduleMemoryCleanup } from './queues/memory-cleanup.queue';
 
 logger.info({ event: 'worker:started', queue: worker.name });
 logger.info({ event: 'worker:started', queue: escalationWorker.name });
+logger.info({ event: 'worker:started', queue: memoryCleanupWorker.name });
+
 
 scheduleEscalationChecks().catch((error) => {
   logger.error('Failed to schedule escalation checks', { error: serializeError(error) });
+});
+scheduleMemoryCleanup().catch((error) => {
+  logger.error('Failed to schedule memory cleanup', { error: serializeError(error) });
 });
 
 // === GRACEFUL SHUTDOWN ===
@@ -24,6 +31,8 @@ async function shutdown(signal: string) {
   await worker.close();
   await escalationWorker.close();
   await escalationQueue.close();
+  await memoryCleanupWorker.close();
+  await memoryCleanupQueue.close();
   await redisConnection.quit();
   await prisma.$disconnect();
   process.exit(0);

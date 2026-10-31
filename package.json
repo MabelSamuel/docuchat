@@ -10,6 +10,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "test:smoke": "vitest run tests/smoke/",
+    "typecheck": "tsc --noEmit",
     "dev": "tsx watch src/server.ts",
     "dev:worker": "tsx watch src/worker.ts"
   },
