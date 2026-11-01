@@ -14,6 +14,47 @@ const router = Router();
 router.use(authenticate);
 router.use(requirePermission('roles:manage'));
 
+/**
+ * @swagger
+ * /admin/roles:
+ *   get:
+ *     summary: List roles with their permissions and user counts
+ *     tags: [Admin]
+ *     responses:
+ *       200:
+ *         description: Roles
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                       name:
+ *                         type: string
+ *                       description:
+ *                         type: string
+ *                         nullable: true
+ *                       isDefault:
+ *                         type: boolean
+ *                       userCount:
+ *                         type: integer
+ *                       permissions:
+ *                         type: array
+ *                         items:
+ *                           type: string
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ */
 // List all roles with their permissions
 router.get('/roles', async (req, res) => {
   const roles = await prisma.role.findMany({
@@ -36,6 +77,43 @@ router.get('/roles', async (req, res) => {
   });
 });
 
+/**
+ * @swagger
+ * /admin/users/{userId}/roles:
+ *   post:
+ *     summary: Assign a role to a user
+ *     tags: [Admin]
+ *     parameters:
+ *       - name: userId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [roleName]
+ *             properties:
+ *               roleName:
+ *                 type: string
+ *                 example: reviewer
+ *     responses:
+ *       200:
+ *         description: Role assigned
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Message'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       404:
+ *         description: User or role not found
+ */
 // Assign a role to a user
 router.post('/users/:userId/roles', async (req, res, next) => {
   try {
@@ -72,6 +150,37 @@ router.post('/users/:userId/roles', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+/**
+ * @swagger
+ * /admin/users/{userId}/roles/{roleName}:
+ *   delete:
+ *     summary: Revoke a role from a user
+ *     tags: [Admin]
+ *     parameters:
+ *       - name: userId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: roleName
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Role revoked
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Message'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       404:
+ *         description: Role not found
+ */
 // Revoke a role from a user
 router.delete('/users/:userId/roles/:roleName',
   async (req, res, next) => {
@@ -101,6 +210,41 @@ router.delete('/users/:userId/roles/:roleName',
   }
 );
 
+/**
+ * @swagger
+ * /admin/analytics:
+ *   get:
+ *     summary: Review-queue analytics (cached for 5 minutes)
+ *     tags: [Admin]
+ *     parameters:
+ *       - name: period
+ *         in: query
+ *         schema:
+ *           type: string
+ *           enum: ['1h', '24h', '7d', '30d']
+ *           default: '24h'
+ *     responses:
+ *       200:
+ *         description: Analytics
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     review:
+ *                       type: object
+ *       400:
+ *         $ref: '#/components/responses/ValidationError'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ */
 // Admin analytics dashboard (cached for 5 minutes)
 router.get('/analytics', async (req, res, next) => {
   try {

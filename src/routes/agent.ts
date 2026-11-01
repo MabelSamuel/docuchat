@@ -9,6 +9,63 @@ import { researchSchema } from '../validators/agent.validator';
 const router = Router();
 router.use(authenticate);
 
+/**
+ * @swagger
+ * /agent/research:
+ *   post:
+ *     summary: Run the research agent over the user's documents
+ *     tags: [Agent]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [question]
+ *             properties:
+ *               question:
+ *                 type: string
+ *                 minLength: 3
+ *                 maxLength: 2000
+ *     responses:
+ *       200:
+ *         description: Agent result
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     answer:
+ *                       type: string
+ *                     sources:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                     confidence:
+ *                       type: number
+ *                     metadata:
+ *                       type: object
+ *                       properties:
+ *                         iterations:
+ *                           type: integer
+ *                         costUsd:
+ *                           type: number
+ *                         terminationReason:
+ *                           type: string
+ *       400:
+ *         $ref: '#/components/responses/ValidationError'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       429:
+ *         $ref: '#/components/responses/RateLimited'
+ */
 router.post('/research',
   chatLimiter,
   requirePermission('conversations:create'),
